@@ -6,12 +6,15 @@ use App\Filament\Resources\FixedDepositResource\Pages;
 use App\Filament\Resources\FixedDepositResource\RelationManagers;
 use App\Models\FixedDeposit;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Form;
 
 class FixedDepositResource extends Resource
 {
@@ -23,32 +26,73 @@ class FixedDepositResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('bank')
+                TextInput::make('bank')
                     ->required(),
-                Forms\Components\TextInput::make('accountno')
+                TextInput::make('accountno')
                     ->required(),
-                Forms\Components\TextInput::make('principal_amt')
+                TextInput::make('principal_amt')
                     ->required()
                     ->numeric(),
-                Forms\Components\TextInput::make('maturity_amt')
+                //->reactive()
+                // ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                //   self::updateIntAmt($set, $get);
+                // }),
+                TextInput::make('maturity_amt')
+                    ->required()
+                    ->numeric()
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                        self::updateIntAmt($set, $get);
+                    }),
+                DatePicker::make('start_date')
+                    ->required(),
+                DatePicker::make('maturity_date')
+                    ->required(),
+                TextInput::make('term')
+                    ->required()
+                    ->numeric()
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                        self::updateIntYear($set, $get);
+                    }),
+                TextInput::make('int_rate')
                     ->required()
                     ->numeric(),
-                Forms\Components\DatePicker::make('start_date')
-                    ->required(),
-                Forms\Components\DatePicker::make('maturity_date')
-                    ->required(),
-                Forms\Components\TextInput::make('term')
-                    ->required(),
-                Forms\Components\TextInput::make('int_rate')
+                TextInput::make('Int_amt')
                     ->required()
-                    ->numeric(),
-                Forms\Components\TextInput::make('Int_amt')
-
-                    ->numeric(),
-                Forms\Components\TextInput::make('Int_year')
-
-                    ->numeric(),
+                    ->numeric()
+                    ->disabled()
+                    ->reactive(),
+                TextInput::make('Int_year')
+                    ->numeric()
+                    ->disabled()
+                    ->reactive(),
             ]);
+    }
+    protected static function updateIntAmt(callable $set, callable $get)
+    {
+        $principal_amt = $get('principal_amt');
+        $maturity_amt = $get('maturity_amt');
+
+        if ($principal_amt !== null && $maturity_amt !== null) {
+            $Int_amt = (float) $maturity_amt - (float) $principal_amt;
+            $set('Int_amt', $Int_amt);
+            self::updateIntYear($set, $get);
+        }
+    }
+
+    protected static function updateIntYear(callable $set, callable $get)
+    {
+        $term = $get('term');
+        $Int_amt = $get('Int_amt');
+
+        if ($term !== null && $Int_amt !== null) {
+            if ($term < 365) {
+                $set('Int_year', $Int_amt);
+            } else {
+                $set('Int_year', ($Int_amt / $term) * 365);
+            }
+        }
     }
 
     public static function table(Table $table): Table

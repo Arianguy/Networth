@@ -15,14 +15,14 @@ return new class extends Migration
             $table->id();
             $table->string('bank');
             $table->string('accountno');
-            $table->decimal('principal_amt');
-            $table->decimal('maturity_amt');
+            $table->decimal('principal_amt', 15, 2);
+            $table->decimal('maturity_amt', 15, 2);
             $table->date('start_date');
             $table->date('maturity_date');
-            $table->string('term');
-            $table->decimal('int_rate');
-            $table->decimal('Int_amt');
-            $table->decimal('Int_year');
+            $table->integer('term');
+            $table->decimal('int_rate', 5, 2);
+            $table->decimal('Int_amt', 15, 2)->nullable();
+            $table->decimal('Int_year', 15, 2)->default(0);
             $table->timestamps();
         });
     }
