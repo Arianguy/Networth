@@ -2,98 +2,138 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\FixedDepositResource\Pages;
-use App\Filament\Resources\FixedDepositResource\RelationManagers;
-use App\Models\FixedDeposit;
+use Carbon\Carbon;
 use Filament\Forms;
-use Filament\Resources\Resource;
 use Filament\Tables;
-use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Forms\Form;
+use Filament\Tables\Table;
+use App\Models\FixedDeposit;
+use Filament\Resources\Resource;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Section;
+use App\Filament\Resources\FixedDepositResource\Pages;
 
 class FixedDepositResource extends Resource
 {
-    protected static ?string $model = FixedDeposit::class;
-
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
-
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                TextInput::make('bank')
-                    ->required(),
-                TextInput::make('accountno')
-                    ->required(),
-                TextInput::make('principal_amt')
-                    ->required()
-                    ->numeric(),
-                //->reactive()
-                // ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                //   self::updateIntAmt($set, $get);
-                // }),
-                TextInput::make('maturity_amt')
-                    ->required()
-                    ->numeric()
-                    ->reactive()
-                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                        self::updateIntAmt($set, $get);
-                    }),
-                DatePicker::make('start_date')
-                    ->required(),
-                DatePicker::make('maturity_date')
-                    ->required(),
-                TextInput::make('term')
-                    ->required()
-                    ->numeric()
-                    ->reactive()
-                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                        self::updateIntYear($set, $get);
-                    }),
-                TextInput::make('int_rate')
-                    ->required()
-                    ->numeric(),
-                TextInput::make('Int_amt')
-                    ->required()
-                    ->numeric()
-                    ->disabled()
-                    ->reactive(),
-                TextInput::make('Int_year')
-                    ->numeric()
-                    ->disabled()
-                    ->reactive(),
+                Section::make('Account Details')
+                    ->schema([
+                        Grid::make(2)
+                            ->schema([
+                                Forms\Components\TextInput::make('bank')
+                                    ->required()
+                                    ->columnSpan(1),
+                                Forms\Components\TextInput::make('accountno')
+                                    ->required()
+                                    ->columnSpan(1),
+                            ]),
+                    ]),
+
+                Section::make('Deposit Information')
+                    ->schema([
+                        Grid::make(2)
+                            ->schema([
+                                Forms\Components\TextInput::make('principal_amt')
+                                    ->required()
+                                    ->numeric()
+                                    ->label('Principal Amount')
+                                    ->columnSpan(1),
+                                Forms\Components\TextInput::make('maturity_amt')
+                                    ->required()
+                                    ->numeric()
+                                    ->label('Maturity Amount')
+                                    ->columnSpan(1),
+                                Forms\Components\TextInput::make('int_rate')
+                                    ->required()
+                                    ->numeric()
+                                    ->label('Interest Rate (%)')
+                                    ->columnSpan(1),
+                            ]),
+                    ]),
+
+                Section::make('Term Details')
+                    ->schema([
+                        Grid::make(2)
+                            ->schema([
+                                Forms\Components\DatePicker::make('start_date')
+                                    ->required()
+                                    ->live()
+                                    ->label('Start Date')
+                                    ->columnSpan(1)
+                                    ->afterStateUpdated(fn(Set $set, Get $get) => self::calculateTerm($set, $get)),
+                                Forms\Components\DatePicker::make('maturity_date')
+                                    ->required()
+                                    ->live()
+                                    ->label('Maturity Date')
+                                    ->columnSpan(1)
+                                    ->afterStateUpdated(fn(Set $set, Get $get) => self::calculateTerm($set, $get)),
+                                Forms\Components\TextInput::make('term_display')
+                                    ->label('Term')
+                                    ->disabled()
+                                    ->dehydrated(false)
+                                    ->columnSpan(2),
+                                Forms\Components\Hidden::make('term')
+                                    ->dehydrated(true),
+                            ]),
+                    ]),
             ]);
     }
-    protected static function updateIntAmt(callable $set, callable $get)
+
+
+    public static function calculateTerm(Set $set, Get $get): void
     {
-        $principal_amt = $get('principal_amt');
-        $maturity_amt = $get('maturity_amt');
+        $startDate = $get('start_date');
+        $maturityDate = $get('maturity_date');
 
-        if ($principal_amt !== null && $maturity_amt !== null) {
-            $Int_amt = (float) $maturity_amt - (float) $principal_amt;
-            $set('Int_amt', $Int_amt);
-            self::updateIntYear($set, $get);
-        }
-    }
+        if ($startDate && $maturityDate) {
+            $start = Carbon::parse($startDate);
+            $end = Carbon::parse($maturityDate);
 
-    protected static function updateIntYear(callable $set, callable $get)
-    {
-        $term = $get('term');
-        $Int_amt = $get('Int_amt');
+            // Calculate the exact difference in years, months, and days
+            $diff = $start->diff($end);
 
-        if ($term !== null && $Int_amt !== null) {
-            if ($term < 365) {
-                $set('Int_year', $Int_amt);
-            } else {
-                $set('Int_year', ($Int_amt / $term) * 365);
+            $years = $diff->y;    // Years difference
+            $months = $diff->m;   // Months difference
+            $days = $diff->d;     // Days difference
+
+            // Prepare display term based on the differences
+            $displayTerm = '';
+
+            // Add years to the display if there are any
+            if ($years > 0) {
+                $displayTerm .= $years . ' year' . ($years > 1 ? 's' : '') . ' ';
             }
+
+            // Add months to the display if there are any
+            if ($months > 0) {
+                $displayTerm .= $months . ' month' . ($months > 1 ? 's' : '') . ' ';
+            }
+
+            // Add days to the display if there are any
+            if ($days > 0) {
+                $displayTerm .= $days . ' day' . ($days > 1 ? 's' : '');
+            }
+
+            // Set the display term, fallback to '1 day' if empty
+            $set('term_display', trim($displayTerm) ?: '1 day');
+
+            // Set the actual total number of days in the database
+            $totalDays = $start->diffInDays($end);
+            $set('term', $totalDays);
+        } else {
+            // Clear the term display and value if dates are missing
+            $set('term_display', '');
+            $set('term', null);
         }
     }
+
+
+
 
     public static function table(Table $table): Table
     {
@@ -142,17 +182,8 @@ class FixedDepositResource extends Resource
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
+                Tables\Actions\DeleteBulkAction::make(),
             ]);
-    }
-
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
     }
 
     public static function getPages(): array
